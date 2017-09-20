@@ -447,6 +447,122 @@ void CNN_test_slim(string path, int digit) {
 	}
 	cout << "My prediction for this digit image is: " << to_string(idx) << endl;
 }
+
+// test if batching doulbe values is feasible
+// crtbuilder only can compose integer
+void batching_double_test() {
+	print_example_banner("Test: Batching doulbe values using CRT");
+
+	// Create encryption parameters
+	EncryptionParameters parms;
+
+	/*
+	For PolyCRTBuilder it is necessary to have plain_modulus be a prime number congruent to 1 modulo
+	2*degree(poly_modulus). We can use for example the following parameters:
+	*/
+	parms.set_poly_modulus("1x^4096 + 1");
+	parms.set_coeff_modulus(ChooserEvaluator::default_parameter_options().at(4096));
+	// 2^30 +3 is a prime 1073741827
+	// 2^30 -35 is a prime 1073741789
+	parms.set_plain_modulus(40961);
+	cout << "Validating..." << endl;
+	parms.validate();
+
+	// Create the PolyCRTBuilder
+	PolyCRTBuilder crtbuilder(parms);
+	int slot_count = crtbuilder.get_slot_count();
+
+	cout << "Encryption parameters allow " << slot_count << " slots." << endl;
+
+	vector<int> origin{0,6};
+	origin[0] = 2;
+	origin[1] = 3;
+	origin[2] = 5;
+	origin[3] = 7;
+	origin[4] = 11;
+	origin[5] = 13;
+
+	// Create a vector of values that are to be stored in the slots. We initialize all values to 0 at this point.
+	vector<BigUInt> values(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(0)));
+
+	// Set the first few entries of the values vector to be non-zero
+	values[0] = 0;
+	values[1] = 1;
+	values[2] = 2;
+	values[3] = 4;
+	values[4] = 8;
+	values[5] = 16;
+
+	// Now compose these into one polynomial using PolyCRTBuilder
+	cout << "Plaintext slot contents (slot, value): ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		cout << "(" << i << ", " << values[i].to_dec_string() << ")" << ((i != 5) ? ", " : "\n");
+	}
+
+	cout << "Plaintext slot contents (slot, value) after normalizaiton: ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		cout << "(" << i << ", " << double(origin[i] / 10.) << ")" << ((i != 5) ? ", " : "\n");
+	}
+
+	Plaintext plain_composed_poly = crtbuilder.compose(values);
+
+
+	// Create a vector to hold other values needed for normalization. We initialize all values to 10 at this point.
+	vector<BigUInt> valuesNorm(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(40960)));
+	Plaintext plain_composed_norm = crtbuilder.compose(valuesNorm);
+
+	// Let's do some homomorphic operations now. First we need all the encryption tools.
+	// Generate keys.
+	cout << "Generating keys ..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	Ciphertext public_key = generator.public_key();
+	Plaintext secret_key = generator.secret_key();
+
+	// Create the encryption tools
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms);
+	Decryptor decryptor(parms, secret_key);
+
+	// Create encoder
+	FractionalEncoder fEncoder(parms.plain_modulus(), parms.poly_modulus(), 32, 64, 2);
+	IntegerEncoder intEncoder(parms.plain_modulus());
+
+	// Encrypt plain_composed_poly
+	cout << "Encrypting ... ";
+	Ciphertext encrypted_composed_poly = encryptor.encrypt(plain_composed_poly);
+	cout << "done." << endl;
+
+	// Let's square the encrypted_composed_poly
+	cout << "Normalized the encrypted polynomial ... ";
+	double divide = 1;
+	Plaintext pDivide = fEncoder.encode(divide);
+	Plaintext pMax = intEncoder.encode(10);
+	Ciphertext encrypted_normalize = evaluator.multiply_plain(encrypted_composed_poly, plain_composed_norm);
+	// encrypted_normalize = evaluator.multiply_plain(encrypted_normalize, pMax);
+	cout << "done." << endl;
+
+	cout << "Decrypting the normalized polynomial ... ";
+	Plaintext plain_normalize = decryptor.decrypt(encrypted_normalize);
+	cout << "done." << endl;
+
+	// Print the normalized slots
+	crtbuilder.decompose(plain_normalize, values);
+	cout << "Normalized slot contents (slot, value): ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		cout << "(" << i << ", " << values[i].to_dec_string() << ")" << ((i != 5) ? ", " : "\n");
+	}
+
+	// How much noise budget are we left with?
+	cout << "Noise budget in result: " << decryptor.invariant_noise_budget(encrypted_normalize) << " bits" << endl;
+
+}
+
+
 void example_linear_regression()
 {
 	print_example_banner("Example: linear regression");

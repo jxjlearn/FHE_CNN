@@ -27,8 +27,11 @@ int main()
 
 	//CNN_test_slim(path, digit);
 	// path to store the txt files
-	string path = "./CNN_cpp/test";
-	encode_test(path);
+	//string path = "./CNN_cpp/test";
+	//encode_test(path);
+
+	// test batching
+	batching_double_test();
 
     //// Wait for ENTER before closing screen.
     //cout << "Press ENTER to exit" << endl;

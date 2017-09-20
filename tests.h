@@ -26,6 +26,8 @@ void monitor_test(string path, string source);
 bool ifDecodeCorrect(double number, FractionalEncoder encoder, double residue);
 void encode_test(string path);
 
+void batching_double_test();
+
 void print_example_banner(string title);
 void example_timing();
 void example_basics();
